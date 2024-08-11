@@ -4,7 +4,8 @@ import {
   Layer, GeoJSON, Marker, Icon, DivIcon, LatLng, setOptions,
 } from 'leaflet';
 
-const iconUrl = require('./images/bike_icon.png');
+// const iconUrl = require('./images/bike_icon.png');
+const iconUrl = new URL('./images/bike_icon.png', document.currentScript.src);
 
 const GBFS = Layer.extend({
   options: {
@@ -95,8 +96,11 @@ const GBFS = Layer.extend({
       const stations = await stationInformationResponse.json();
       const stationStatusResponse = await fetch(this.feeds.stationStatus.url);
       const stationStatus = await stationStatusResponse.json();
-      const freeBikeStatusResponse = await fetch(this.feeds.freeBikeStatus.url);
-      const freeBikeStatus = await freeBikeStatusResponse.json();
+      let freeBikeStatus;
+      if (typeof this.feeds.freeBikeStatus !== 'undefined') {
+        const freeBikeStatusResponse = await fetch(this.feeds.freeBikeStatus.url);
+        freeBikeStatus = await freeBikeStatusResponse.json();
+      }
       let vehicleTypes;
       if (typeof this.feeds.vehicleTypes !== 'undefined') {
         const vehicleTypesResponse = await fetch(this.feeds.vehicleTypes.url);
@@ -134,19 +138,22 @@ const GBFS = Layer.extend({
         iconUrl,
       });
 
-      freeBikeStatus.data.bikes.forEach((bike) => {
-        const point = new LatLng(bike.lat, bike.lon);
-        const marker = new Marker(point, {
-          icon,
+      if (typeof freeBikeStatus !== 'undefined') {
+        freeBikeStatus.data.bikes.forEach((bike) => {
+          const point = new LatLng(bike.lat, bike.lon);
+          const marker = new Marker(point, {
+            icon,
+          });
+          if (this.options.showBikePopup) {
+            marker.bindPopup('Bike available');
+          }
+          marker.on('click', (e) => this.fire('bikeClick', { event: e, bike }));
+          marker.addTo(this.container);
         });
-        if (this.options.showBikePopup) {
-          marker.bindPopup('Bike available');
-        }
-        marker.on('click', (e) => this.fire('bikeClick', { event: e, bike }));
-        marker.addTo(this.container);
-      });
+      }
 
-      const dataUpdate = { stations, stationStatus, freeBikeStatus };
+      const dataUpdate = { stations, stationStatus };
+      if (typeof freeBikeStatus !== 'undefined') dataUpdate.freeBikeStatus = freeBikeStatus;
       if (typeof vehicleTypes !== 'undefined') dataUpdate.vehicleTypes = vehicleTypes;
       this.fire('data', dataUpdate);
     } catch (err) {
