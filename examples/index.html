@@ -29,9 +29,29 @@
                 maxZoom: 19
             }).addTo(map);
 
-            map.setView([48.3964, 9.9902], 18);
+            const urlParams = new URLSearchParams(document.location.search);
+            let lat = Number(urlParams.get('lat') || '35.6583');
+            let lon = Number(urlParams.get('lon') || '139.7414');
+            let zoom = +urlParams.get('zoom') || 15;
+            map.setView([lat, lon], zoom);
 
-            var gbfs = new L.GBFS({ gbfsURL: 'https://api.openbike.ulm.dev/gbfs/gbfs.json' }).addTo(map);
+            let gbfsUrls = urlParams.getAll('gbfsUrl');
+            if (gbfsUrls.length === 0) {
+                gbfsUrls = [
+                    'https://api-public.odpt.org/api/v4/gbfs/docomo-cycle/gbfs.json',
+                    'https://api-public.odpt.org/api/v4/gbfs/hellocycling/gbfs.json',
+                ];
+            }
+            let gbfsNames = urlParams.getAll('gbfsName');
+            if (gbfsNames.length === 0) {
+                // TODO: use system_id from system_information.json
+                gbfsNames = ['docomo-cycle', 'hellocycling'];
+            }
+            const overlays = {};
+            gbfsUrls.forEach((url, idx) => {
+                overlays[gbfsNames[idx]] = new L.GBFS({ gbfsURL: url }).addTo(map);
+            });
+            L.control.layers(null, overlays, { collapsed: false }).addTo(map);
         </script>
     </body>
 </html>
