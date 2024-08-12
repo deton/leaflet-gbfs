@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8">
         <title>Leaflet GBFS</title>
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.0.3/dist/leaflet.css" />
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
         <link rel="stylesheet" href="../dist/L.GBFS.css" />
         <style>
             #map {
@@ -18,7 +18,7 @@
     <body>
         <div id="map"></div>
 
-        <script src="https://unpkg.com/leaflet@1.0.3/dist/leaflet-src.js"></script>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet-src.js"></script>
         <script src="../dist/L.GBFS.js"></script>
 
         <script type="text/javascript">
@@ -35,31 +35,33 @@
             let zoom = +urlParams.get('zoom') || 14;
             map.setView([lat, lon], zoom);
 
+            let gbfsColors = urlParams.getAll('gbfsColor');
             let gbfsUrls = urlParams.getAll('gbfsUrl');
             if (gbfsUrls.length === 0) {
                 gbfsUrls = [
                     'https://api-public.odpt.org/api/v4/gbfs/docomo-cycle/gbfs.json',
                     'https://api-public.odpt.org/api/v4/gbfs/hellocycling/gbfs.json',
                 ];
+                if (gbfsColors.length === 0) {
+                    // XXX: use brand_assets.color from system_information.json
+                    gbfsColors = ['#cc0033', '#fabe00'];
+                }
             }
-            let gbfsNames = urlParams.getAll('gbfsName');
-            if (gbfsNames.length === 0) {
-                // TODO: use system_id from system_information.json
-                gbfsNames = ['docomo-cycle', 'hellocycling'];
-            }
-            let gbfsColors = urlParams.getAll('gbfsColor');
-            if (gbfsColors.length === 0) {
-                // TODO: use brand_assets.color from system_information.json
-                gbfsColors = ['#cc0033', '#fabe00']; //'#C2D32C'
-            }
-            const overlays = {};
+            const layerControl = L.control.layers(null, null, { collapsed: false }).addTo(map);
             gbfsUrls.forEach((url, idx) => {
-                overlays[gbfsNames[idx]] = new L.GBFS({
+                const gbfs = new L.GBFS({
                     gbfsURL: url,
-                    stationMarkerBgColor: gbfsColors[idx],
-                }).addTo(map);
+                    stationMarkerBgColor: (idx < gbfsColors.length) ? gbfsColors[idx] : undefined,
+                });
+                gbfs.once('data', onceDataUpdate);
+                return gbfs;
+
+                function onceDataUpdate(data) {
+                    // use fetched system_id
+                    layerControl.addOverlay(gbfs, gbfs.systemInformation.data.system_id);
+                    gbfs.addTo(map);
+                }
             });
-            L.control.layers(null, overlays, { collapsed: false }).addTo(map);
         </script>
     </body>
 </html>

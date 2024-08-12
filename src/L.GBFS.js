@@ -49,6 +49,10 @@ const GBFS = Layer.extend({
       }
 
       const feeds = gbfs.data[this.options.language].feeds;
+      const systemInformation = feeds.find((el) => el.name === 'system_information');
+      const systemInfoResponse = await fetch(systemInformation.url);
+      this.systemInformation = await systemInfoResponse.json();
+
       const stationInformation = feeds.find((el) => el.name === 'station_information');
       const stationStatus = feeds.find((el) => el.name === 'station_status');
       const freeBikeStatus = feeds.find((el) => el.name === 'free_bike_status');
