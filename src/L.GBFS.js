@@ -16,6 +16,7 @@ const GBFS = Layer.extend({
     onlyRunWhenAdded: false,
     bikeMarkerColor: 'white',
     bikeMarkerBgColor: 'silver',
+    stationMarkerBgColor: '#8C2BF2',
     showStationPopup: true,
     showBikePopup: true,
   },
@@ -190,9 +191,9 @@ const GBFS = Layer.extend({
   },
 
   getStationIconHtml(bikes, docks) {
-    let cssClass = 'station-icon-inner';
+    let stationCss = `background: ${this.options.stationMarkerBgColor};`;
     if (bikes === 0) {
-      cssClass += ' station-icon-empty';
+      stationCss = `background: color-mix(in srgb, ${this.options.stationMarkerBgColor} 50%, transparent);`;
     }
     const degree = (bikes / (bikes + docks)) * 360;
     let ringCss = `
@@ -212,7 +213,7 @@ const GBFS = Layer.extend({
     }
     return `
       <div class="station-icon-ring" style="${ringCss}">
-        <div class="${cssClass}">${bikes}</div>
+        <div class="station-icon-inner" style="${stationCss}">${bikes}</div>
       </div>
     `;
   },

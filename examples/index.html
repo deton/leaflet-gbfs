@@ -30,9 +30,9 @@
             }).addTo(map);
 
             const urlParams = new URLSearchParams(document.location.search);
-            let lat = Number(urlParams.get('lat') || '35.6583');
-            let lon = Number(urlParams.get('lon') || '139.7414');
-            let zoom = +urlParams.get('zoom') || 15;
+            let lat = Number(urlParams.get('lat') || '35.5403');
+            let lon = Number(urlParams.get('lon') || '139.6987');
+            let zoom = +urlParams.get('zoom') || 14;
             map.setView([lat, lon], zoom);
 
             let gbfsUrls = urlParams.getAll('gbfsUrl');
@@ -47,9 +47,17 @@
                 // TODO: use system_id from system_information.json
                 gbfsNames = ['docomo-cycle', 'hellocycling'];
             }
+            let gbfsColors = urlParams.getAll('gbfsColor');
+            if (gbfsColors.length === 0) {
+                // TODO: use brand_assets.color from system_information.json
+                gbfsColors = ['#cc0033', '#fabe00']; //'#C2D32C'
+            }
             const overlays = {};
             gbfsUrls.forEach((url, idx) => {
-                overlays[gbfsNames[idx]] = new L.GBFS({ gbfsURL: url }).addTo(map);
+                overlays[gbfsNames[idx]] = new L.GBFS({
+                    gbfsURL: url,
+                    stationMarkerBgColor: gbfsColors[idx],
+                }).addTo(map);
             });
             L.control.layers(null, overlays, { collapsed: false }).addTo(map);
         </script>

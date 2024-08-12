@@ -1,5 +1,4 @@
 .station-icon-inner {
-  background: #8C2BF2;
   color: white;
   width: 26px;
   height: 26px;
@@ -17,8 +16,4 @@
   width: 32px;
   height: 32px;
   border-radius: 16px;
-}
-
-.station-icon-empty {
-  background: rgba(140, 43, 242, 0.5);
 }
