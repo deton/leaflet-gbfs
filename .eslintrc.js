@@ -1,3 +1,5 @@
+const airbnbBaseStyle = require("eslint-config-airbnb-base/rules/style");
+
 module.exports = {
   env: {
     browser: true,
@@ -20,6 +22,14 @@ module.exports = {
     'prefer-destructuring': ['error', {
       'array': false,
       'object': false
-    }]
+    }],
+    // allow ForOfStatement https://zenn.dev/pirosikick/articles/f57c573282b3d8
+    "no-restricted-syntax": airbnbBaseStyle.rules[
+      "no-restricted-syntax"
+    ].filter(
+      (value) =>
+        typeof value === "string" || // 'error'
+        value.selector !== "ForOfStatement" // allow
+    )
   }
 };

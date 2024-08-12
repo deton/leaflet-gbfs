@@ -52,11 +52,12 @@ const GBFS = Layer.extend({
       const stationInformation = feeds.find((el) => el.name === 'station_information');
       const stationStatus = feeds.find((el) => el.name === 'station_status');
       const freeBikeStatus = feeds.find((el) => el.name === 'free_bike_status');
-      const vehicleTypes = feeds.find((el) => el.name === 'vehicle_types');
+      // const vehicleTypes = feeds.find((el) => el.name === 'vehicle_types');
 
       this.feeds = {
-        stationInformation, stationStatus, freeBikeStatus, vehicleTypes,
+        stationInformation, stationStatus, freeBikeStatus, // vehicleTypes,
       };
+      this.stations = {};
 
       if (!this.timer) {
         this.timer = setInterval(() => this.update(), this.options.interval);
@@ -93,8 +94,7 @@ const GBFS = Layer.extend({
     }
     try {
       this.updating = true;
-      const stationInformationResponse = await fetch(this.feeds.stationInformation.url);
-      const stations = await stationInformationResponse.json();
+      let stations;
       const stationStatusResponse = await fetch(this.feeds.stationStatus.url);
       const stationStatus = await stationStatusResponse.json();
       let freeBikeStatus;
@@ -110,28 +110,36 @@ const GBFS = Layer.extend({
 
       this.container.clearLayers();
 
-      stations.data.stations.forEach((station) => {
-        stationStatus.data.stations.forEach((status) => {
-          if ((status.station_id === station.station_id) && status.is_installed) {
-            const icon = new DivIcon({
-              html: this.getStationIconHtml(status.num_bikes_available, status.num_docks_available),
-              bgPos: [16, 16],
-              iconSize: [32, 32],
-              popupAnchor: [0, -21],
-              className: 'station-icon',
+      for (const status of stationStatus.data.stations) {
+        if (status.is_installed) {
+          if (!(status.station_id in this.stations)) {
+            /* eslint-disable no-await-in-loop */
+            const stationInformationResponse = await fetch(this.feeds.stationInformation.url);
+            stations = await stationInformationResponse.json();
+            /* eslint-enable */
+            stations.data.stations.forEach((station) => {
+              this.stations[station.station_id] = station;
             });
-            const point = new LatLng(station.lat, station.lon);
-            const marker = new Marker(point, {
-              icon,
-            });
-            if (this.options.showStationPopup) {
-              marker.bindPopup(`<b>${station.name}</b><br>Available bikes: <b>${status.num_bikes_available}</b>`);
-            }
-            marker.on('click', (e) => this.fire('stationClick', { event: e, station, status }));
-            marker.addTo(this.container);
           }
-        });
-      });
+          const station = this.stations[status.station_id];
+          const icon = new DivIcon({
+            html: this.getStationIconHtml(status.num_bikes_available, status.num_docks_available),
+            bgPos: [16, 16],
+            iconSize: [32, 32],
+            popupAnchor: [0, -21],
+            className: 'station-icon',
+          });
+          const point = new LatLng(station.lat, station.lon);
+          const marker = new Marker(point, {
+            icon,
+          });
+          if (this.options.showStationPopup) {
+            marker.bindPopup(`<b>${station.name}</b><br>Available bikes: <b>${status.num_bikes_available}</b>`);
+          }
+          marker.on('click', (e) => this.fire('stationClick', { event: e, station, status }));
+          marker.addTo(this.container);
+        }
+      }
 
       const icon = new Icon({
         iconSize: [32, 32],
@@ -153,7 +161,8 @@ const GBFS = Layer.extend({
         });
       }
 
-      const dataUpdate = { stations, stationStatus };
+      const dataUpdate = { stationStatus };
+      if (typeof stations !== 'undefined') dataUpdate.stations = stations;
       if (typeof freeBikeStatus !== 'undefined') dataUpdate.freeBikeStatus = freeBikeStatus;
       if (typeof vehicleTypes !== 'undefined') dataUpdate.vehicleTypes = vehicleTypes;
       this.fire('data', dataUpdate);
