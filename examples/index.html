@@ -74,10 +74,9 @@
                     }
                     const timekey = data.stationStatus.last_updated;
                     if (!historyDatas[idx][timekey]) {
-                        historyDatas[idx][timekey] = {
-                            stationStatus: data.stationStatus,
-                            stations: data.stations,
-                        }; // not to include 'sourceTarget', 'target' for event
+                        historyDatas[idx][timekey] = data.stationStatus.data.stations.map(x => ([
+                            x.station_id, x.num_bikes_available, x.num_docks_available,
+                        ]));
                     }
                 }
             });
