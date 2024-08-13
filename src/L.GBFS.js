@@ -32,6 +32,9 @@ const GBFS = Layer.extend({
   },
 
   async start() {
+    if (this.feeds) { // already started
+      return this;
+    }
     try {
       const gbfsResponse = await fetch(this.options.gbfsURL);
       const gbfs = await gbfsResponse.json();
@@ -116,16 +119,17 @@ const GBFS = Layer.extend({
 
       for (const status of stationStatus.data.stations) {
         if (status.is_installed) {
-          if (!(status.station_id in this.stations)) {
+          let station = this.stations[status.station_id];
+          if (!station) {
             /* eslint-disable no-await-in-loop */
             const stationInformationResponse = await fetch(this.feeds.stationInformation.url);
             stations = await stationInformationResponse.json();
             /* eslint-enable */
-            stations.data.stations.forEach((station) => {
-              this.stations[station.station_id] = station;
+            stations.data.stations.forEach((st) => {
+              this.stations[st.station_id] = st;
             });
+            station = this.stations[status.station_id];
           }
-          const station = this.stations[status.station_id];
           const icon = new DivIcon({
             html: this.getStationIconHtml(status.num_bikes_available, status.num_docks_available),
             bgPos: [16, 16],

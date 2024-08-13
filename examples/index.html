@@ -13,10 +13,19 @@
                 bottom: 0;
                 right: 0;
             }
+            #toolbar {
+                position: absolute;
+                top: 5px;
+                left: 60px;
+                z-index: 1000;
+            }
         </style>
     </head>
     <body>
         <div id="map"></div>
+        <div id="toolbar" class="leaflet-control">
+            <a id="exportData"><button id="exportDataButton" onclick="exportData()">Export data</button></a>
+        </div>
 
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet-src.js"></script>
         <script src="../dist/L.GBFS.js"></script>
@@ -48,20 +57,41 @@
                 }
             }
             const layerControl = L.control.layers(null, null, { collapsed: false }).addTo(map);
-            gbfsUrls.forEach((url, idx) => {
+            const historyDatas = new Array(gbfsUrls.length);
+            const gbfsLayers = gbfsUrls.map((url, idx) => {
+                historyDatas[idx] = {};
                 const gbfs = new L.GBFS({
                     gbfsURL: url,
                     stationMarkerBgColor: (idx < gbfsColors.length) ? gbfsColors[idx] : undefined,
                 });
-                gbfs.once('data', onceDataUpdate);
+                gbfs.on('data', onDataUpdate);
                 return gbfs;
 
-                function onceDataUpdate(data) {
-                    // use fetched system_id
-                    layerControl.addOverlay(gbfs, gbfs.systemInformation.data.system_id);
-                    gbfs.addTo(map);
+                function onDataUpdate(data) {
+                    if (!layerControl._getLayer(L.Util.stamp(gbfs))) {
+                        gbfs.addTo(map);
+                        layerControl.addOverlay(gbfs, gbfs.systemInformation.data.system_id);
+                    }
+                    const timekey = data.stationStatus.last_updated;
+                    if (!historyDatas[idx][timekey]) {
+                        historyDatas[idx][timekey] = {
+                            stationStatus: data.stationStatus,
+                            stations: data.stations,
+                        }; // not to include 'sourceTarget', 'target' for event
+                    }
                 }
             });
+
+            function exportData() {
+                const file = new File([JSON.stringify(historyDatas)], 'historydata.json', {
+                  type: 'application/json'
+                });
+                const exportDataElem = document.getElementById("exportData");
+                exportDataElem.href = URL.createObjectURL(file);
+                exportDataElem.download = file.name;
+                //exportDataElem.click();
+                URL.revokeObjectURL(exportDataElem.href);
+            }
         </script>
     </body>
 </html>
