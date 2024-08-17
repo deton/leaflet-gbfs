@@ -24,7 +24,7 @@
     <body>
         <div id="map"></div>
         <div id="toolbar" class="leaflet-control">
-            <a id="exportData"><button id="exportDataButton" onclick="exportData()">Export data</button></a>
+            <a id="exportData"><button id="exportDataButton" onclick="exportData()">Export history data</button></a>
         </div>
 
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet-src.js"></script>
@@ -138,8 +138,22 @@
             });
 
             function exportData() {
-                const file = new File([JSON.stringify(historyDatas)], 'historydata.json', {
-                  type: 'application/json'
+                const histdata = Object.keys(historyDatas).flatMap(systemId => {
+                    return Object.keys(historyDatas[systemId]).map(timekey => {
+                        return {
+                            ts: timekey,
+                            system_id: systemId,
+                            ...historyDatas[systemId][timekey]
+                        };
+                    });
+                })
+                // FIXME: Use common ts value between systemIds
+                .sort((a, b) => a.ts - b.ts)
+                .map(JSON.stringify)
+                .join('\n') + '\n';
+                const date = new Date().toISOString();
+                const file = new File([histdata], `historydata-${date}.ndjson`, {
+                  type: 'application/x-ndjson'
                 });
                 const exportDataElem = document.getElementById("exportData");
                 exportDataElem.href = URL.createObjectURL(file);
