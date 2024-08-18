@@ -4,7 +4,8 @@ import {
   Layer, GeoJSON, Marker, Icon, DivIcon, LatLng, setOptions,
 } from 'leaflet';
 
-const iconUrl = require('./images/bike_icon.png');
+// const iconUrl = require('./images/bike_icon.png');
+const iconUrl = new URL('./images/bike_icon.png', document.currentScript.src);
 
 const GBFS = Layer.extend({
   options: {
@@ -15,6 +16,7 @@ const GBFS = Layer.extend({
     onlyRunWhenAdded: false,
     bikeMarkerColor: 'white',
     bikeMarkerBgColor: 'silver',
+    stationMarkerBgColor: '#8C2BF2',
     showStationPopup: true,
     showBikePopup: true,
   },
@@ -30,6 +32,9 @@ const GBFS = Layer.extend({
   },
 
   async start() {
+    if (this.feeds) { // already started
+      return this;
+    }
     try {
       const gbfsResponse = await fetch(this.options.gbfsURL);
       const gbfs = await gbfsResponse.json();
@@ -47,14 +52,19 @@ const GBFS = Layer.extend({
       }
 
       const feeds = gbfs.data[this.options.language].feeds;
+      const systemInformation = feeds.find((el) => el.name === 'system_information');
+      const systemInfoResponse = await fetch(systemInformation.url);
+      this.systemInformation = await systemInfoResponse.json();
+
       const stationInformation = feeds.find((el) => el.name === 'station_information');
       const stationStatus = feeds.find((el) => el.name === 'station_status');
       const freeBikeStatus = feeds.find((el) => el.name === 'free_bike_status');
-      const vehicleTypes = feeds.find((el) => el.name === 'vehicle_types');
+      // const vehicleTypes = feeds.find((el) => el.name === 'vehicle_types');
 
       this.feeds = {
-        stationInformation, stationStatus, freeBikeStatus, vehicleTypes,
+        stationInformation, stationStatus, freeBikeStatus, // vehicleTypes,
       };
+      this.stations = {};
 
       if (!this.timer) {
         this.timer = setInterval(() => this.update(), this.options.interval);
@@ -91,12 +101,14 @@ const GBFS = Layer.extend({
     }
     try {
       this.updating = true;
-      const stationInformationResponse = await fetch(this.feeds.stationInformation.url);
-      const stations = await stationInformationResponse.json();
+      let stations;
       const stationStatusResponse = await fetch(this.feeds.stationStatus.url);
       const stationStatus = await stationStatusResponse.json();
-      const freeBikeStatusResponse = await fetch(this.feeds.freeBikeStatus.url);
-      const freeBikeStatus = await freeBikeStatusResponse.json();
+      let freeBikeStatus;
+      if (typeof this.feeds.freeBikeStatus !== 'undefined') {
+        const freeBikeStatusResponse = await fetch(this.feeds.freeBikeStatus.url);
+        freeBikeStatus = await freeBikeStatusResponse.json();
+      }
       let vehicleTypes;
       if (typeof this.feeds.vehicleTypes !== 'undefined') {
         const vehicleTypesResponse = await fetch(this.feeds.vehicleTypes.url);
@@ -105,28 +117,37 @@ const GBFS = Layer.extend({
 
       this.container.clearLayers();
 
-      stations.data.stations.forEach((station) => {
-        stationStatus.data.stations.forEach((status) => {
-          if ((status.station_id === station.station_id) && status.is_installed) {
-            const icon = new DivIcon({
-              html: this.getStationIconHtml(status.num_bikes_available, status.num_docks_available),
-              bgPos: [16, 16],
-              iconSize: [32, 32],
-              popupAnchor: [0, -21],
-              className: 'station-icon',
+      for (const status of stationStatus.data.stations) {
+        if (status.is_installed) {
+          let station = this.stations[status.station_id];
+          if (!station) {
+            /* eslint-disable no-await-in-loop */
+            const stationInformationResponse = await fetch(this.feeds.stationInformation.url);
+            stations = await stationInformationResponse.json();
+            /* eslint-enable */
+            stations.data.stations.forEach((st) => {
+              this.stations[st.station_id] = st;
             });
-            const point = new LatLng(station.lat, station.lon);
-            const marker = new Marker(point, {
-              icon,
-            });
-            if (this.options.showStationPopup) {
-              marker.bindPopup(`<b>${station.name}</b><br>Available bikes: <b>${status.num_bikes_available}</b>`);
-            }
-            marker.on('click', (e) => this.fire('stationClick', { event: e, station, status }));
-            marker.addTo(this.container);
+            station = this.stations[status.station_id];
           }
-        });
-      });
+          const icon = new DivIcon({
+            html: this.getStationIconHtml(status.num_bikes_available, status.num_docks_available),
+            bgPos: [16, 16],
+            iconSize: [32, 32],
+            popupAnchor: [0, -21],
+            className: 'station-icon',
+          });
+          const point = new LatLng(station.lat, station.lon);
+          const marker = new Marker(point, {
+            icon,
+          });
+          if (this.options.showStationPopup) {
+            marker.bindPopup(`<b>${station.name}</b><br>Available bikes: <b>${status.num_bikes_available}</b>`);
+          }
+          marker.on('click', (e) => this.fire('stationClick', { event: e, station, status }));
+          marker.addTo(this.container);
+        }
+      }
 
       const icon = new Icon({
         iconSize: [32, 32],
@@ -134,19 +155,23 @@ const GBFS = Layer.extend({
         iconUrl,
       });
 
-      freeBikeStatus.data.bikes.forEach((bike) => {
-        const point = new LatLng(bike.lat, bike.lon);
-        const marker = new Marker(point, {
-          icon,
+      if (typeof freeBikeStatus !== 'undefined') {
+        freeBikeStatus.data.bikes.forEach((bike) => {
+          const point = new LatLng(bike.lat, bike.lon);
+          const marker = new Marker(point, {
+            icon,
+          });
+          if (this.options.showBikePopup) {
+            marker.bindPopup('Bike available');
+          }
+          marker.on('click', (e) => this.fire('bikeClick', { event: e, bike }));
+          marker.addTo(this.container);
         });
-        if (this.options.showBikePopup) {
-          marker.bindPopup('Bike available');
-        }
-        marker.on('click', (e) => this.fire('bikeClick', { event: e, bike }));
-        marker.addTo(this.container);
-      });
+      }
 
-      const dataUpdate = { stations, stationStatus, freeBikeStatus };
+      const dataUpdate = { stationStatus };
+      if (typeof stations !== 'undefined') dataUpdate.stations = stations;
+      if (typeof freeBikeStatus !== 'undefined') dataUpdate.freeBikeStatus = freeBikeStatus;
       if (typeof vehicleTypes !== 'undefined') dataUpdate.vehicleTypes = vehicleTypes;
       this.fire('data', dataUpdate);
     } catch (err) {
@@ -183,9 +208,9 @@ const GBFS = Layer.extend({
   },
 
   getStationIconHtml(bikes, docks) {
-    let cssClass = 'station-icon-inner';
+    let stationCss = `background: ${this.options.stationMarkerBgColor};`;
     if (bikes === 0) {
-      cssClass += ' station-icon-empty';
+      stationCss = `background: color-mix(in srgb, ${this.options.stationMarkerBgColor} 50%, transparent);`;
     }
     const degree = (bikes / (bikes + docks)) * 360;
     let ringCss = `
@@ -205,7 +230,7 @@ const GBFS = Layer.extend({
     }
     return `
       <div class="station-icon-ring" style="${ringCss}">
-        <div class="${cssClass}">${bikes}</div>
+        <div class="station-icon-inner" style="${stationCss}">${bikes}</div>
       </div>
     `;
   },
