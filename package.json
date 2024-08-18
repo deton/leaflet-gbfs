@@ -53,7 +53,7 @@
     "pre-commit": "lint-staged"
   },
   "lint-staged": {
-    "*.js": "eslint"
+    "*.js,!dist/*.js": "eslint"
   },
   "browserslist": [
     "last 1 Chrome versions"
