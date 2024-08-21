@@ -24,6 +24,7 @@
     <body>
         <div id="map"></div>
         <div id="toolbar" class="leaflet-control">
+            Load system_information.json, station_information.json, and station_status.json: <input type="file" id="fileElem" accept=".json" multiple/>
             <a id="exportData"><button id="exportDataButton" onclick="exportData()">Export history data</button></a>
         </div>
 
@@ -41,21 +42,27 @@
             }).addTo(map);
 
             const urlParams = new URLSearchParams(document.location.search);
-            let lat = Number(urlParams.get('lat') || '35.5403');
-            let lon = Number(urlParams.get('lon') || '139.6987');
-            let zoom = +urlParams.get('zoom') || 14;
-            map.setView([lat, lon], zoom);
+            let latlon = urlParams.get('latlon');
+            if (latlon) {
+                latlon = latlon.split(',').map(Number);
+                let zoom = +urlParams.get('zoom') || 14;
+                map.setView(latlon, zoom);
+            }
 
             let gbfsColors = urlParams.getAll('gbfsColor');
-            let gbfsUrls = urlParams.getAll('gbfsUrl');
-            if (gbfsUrls.length === 0) {
-                gbfsUrls = [
-                    'https://api-public.odpt.org/api/v4/gbfs/docomo-cycle/gbfs.json',
-                    'https://api-public.odpt.org/api/v4/gbfs/hellocycling/gbfs.json',
-                ];
-                if (gbfsColors.length === 0) {
-                    // XXX: use brand_assets.color from system_information.json
-                    gbfsColors = ['#cc0033', '#fabe00'];
+            const gbfsUrl = urlParams.get('gbfsUrl');
+            let gbfsUrls = [];
+            if (gbfsUrl !== 'none') {
+                gbfsUrls = urlParams.getAll('gbfsUrl');
+                if (gbfsUrls.length === 0) {
+                    gbfsUrls = [
+                        'https://api-public.odpt.org/api/v4/gbfs/docomo-cycle/gbfs.json',
+                        'https://api-public.odpt.org/api/v4/gbfs/hellocycling/gbfs.json',
+                    ];
+                    if (gbfsColors.length === 0) {
+                        // XXX: use brand_assets.color from system_information.json
+                        gbfsColors = ['#cc0033', '#fabe00'];
+                    }
                 }
             }
             const HEATMAP_GRADIENTS = {
@@ -68,71 +75,95 @@
                 sortLayers: true,
             }).addTo(map);
             const historyDatas = {};
-            const gbfsLayers = gbfsUrls.map((url, idx) => {
-                let systemId;
-                let heatmapLayer;
-                let heatmapDockLayer;
-                const gbfs = new L.GBFS({
-                    gbfsURL: url,
-                    stationMarkerBgColor: (idx < gbfsColors.length) ? gbfsColors[idx] : undefined,
+            if (gbfsUrls.length > 0) {
+                const gbfsLayers = gbfsUrls.map((url, idx) => {
+                    let systemId;
+                    let heatmapLayer;
+                    let heatmapDockLayer;
+                    const gbfs = new L.GBFS({
+                        gbfsURL: url,
+                        stationMarkerBgColor: (idx < gbfsColors.length) ? gbfsColors[idx] : undefined,
+                    });
+                    gbfs.on('data', onDataUpdate);
+                    return gbfs;
+
+                    function onDataUpdate(data) {
+                        if (!layerControl._getLayer(L.Util.stamp(gbfs))) {
+                            if (!latlon) {
+                                map.fitBounds(gbfs.getBounds());
+                            }
+                            systemId = gbfs.systemInformation.data.system_id;
+                            layerControl.addOverlay(gbfs, systemId);
+                            gbfs.addTo(map);
+                            historyDatas[systemId] ||= {};
+                        }
+                        const timekey = data.stationStatus.last_updated;
+                        if (!historyDatas[systemId][timekey]) {
+                            // pickup minimum properties to reduce history size
+                            const ststatus = data.stationStatus.data.stations.map(x => ([
+                                x.station_id, x.num_bikes_available, x.num_docks_available,
+                            ]));
+                            let stinfo;
+                            if (data.stations) {
+                                stinfo = {};
+                                data.stations.data.stations.forEach(x => {
+                                    stinfo[x.station_id] = [x.lat, x.lon, x.name];
+                                });
+                            }
+                            historyDatas[systemId][timekey] = {
+                                status: ststatus,
+                                stations: stinfo,
+                            };
+
+                            // bike heatmap
+                            const heatmapData = ststatus.map(x => {
+                                const [id, bike, dock] = x;
+                                const st = gbfs.stations[id];
+                                return [st.lat, st.lon, bike];
+                            });
+                            if (heatmapLayer) {
+                                heatmapLayer.remove();
+                                layerControl.removeLayer(heatmapLayer);
+                            }
+                            heatmapLayer = L.heatLayer(heatmapData, {
+                                gradient: HEATMAP_GRADIENTS.bike[idx % HEATMAP_GRADIENTS.bike.length],
+                            });
+                            layerControl.addOverlay(heatmapLayer, `${gbfs.systemInformation.data.system_id} bike heatmap`);
+
+                            // dock heatmap
+                            const heatmapDockData = ststatus.map(x => {
+                                const [id, bike, dock] = x;
+                                const st = gbfs.stations[id];
+                                return [st.lat, st.lon, dock];
+                            });
+                            if (heatmapDockLayer) {
+                                heatmapDockLayer.remove();
+                                layerControl.removeLayer(heatmapDockLayer);
+                            }
+                            heatmapDockLayer = L.heatLayer(heatmapDockData, {
+                                gradient: HEATMAP_GRADIENTS.dock[idx % HEATMAP_GRADIENTS.dock.length],
+                            });
+                            layerControl.addOverlay(heatmapDockLayer, `${gbfs.systemInformation.data.system_id} dock heatmap`);
+                        }
+                    }
                 });
+            }
+
+            const fileInput = document.getElementById("fileElem");
+            fileElem.addEventListener("change", () => {
+                const files = Array.from(fileElem.files);
+                const gbfs = new L.GBFS({ gbfsFiles: files });
                 gbfs.on('data', onDataUpdate);
                 return gbfs;
 
                 function onDataUpdate(data) {
                     if (!layerControl._getLayer(L.Util.stamp(gbfs))) {
-                        gbfs.addTo(map);
-                        systemId = gbfs.systemInformation.data.system_id;
+                        if (!latlon) {
+                            map.fitBounds(gbfs.getBounds());
+                        }
+                        const systemId = gbfs.systemInformation.data.system_id;
                         layerControl.addOverlay(gbfs, systemId);
-                        historyDatas[systemId] ||= {};
-                    }
-                    const timekey = data.stationStatus.last_updated;
-                    if (!historyDatas[systemId][timekey]) {
-                        // pickup minimum properties to reduce history size
-                        const ststatus = data.stationStatus.data.stations.map(x => ([
-                            x.station_id, x.num_bikes_available, x.num_docks_available,
-                        ]));
-                        let stinfo;
-                        if (data.stations) {
-                            stinfo = {};
-                            data.stations.data.stations.forEach(x => {
-                                stinfo[x.station_id] = [x.lat, x.lon, x.name];
-                            });
-                        }
-                        historyDatas[systemId][timekey] = {
-                            status: ststatus,
-                            stations: stinfo,
-                        };
-
-                        // bike heatmap
-                        const heatmapData = ststatus.map(x => {
-                            const [id, bike, dock] = x;
-                            const st = gbfs.stations[id];
-                            return [st.lat, st.lon, bike];
-                        });
-                        if (heatmapLayer) {
-                            heatmapLayer.remove();
-                            layerControl.removeLayer(heatmapLayer);
-                        }
-                        heatmapLayer = L.heatLayer(heatmapData, {
-                            gradient: HEATMAP_GRADIENTS.bike[idx % HEATMAP_GRADIENTS.bike.length],
-                        });
-                        layerControl.addOverlay(heatmapLayer, `${gbfs.systemInformation.data.system_id} bike heatmap`);
-
-                        // dock heatmap
-                        const heatmapDockData = ststatus.map(x => {
-                            const [id, bike, dock] = x;
-                            const st = gbfs.stations[id];
-                            return [st.lat, st.lon, dock];
-                        });
-                        if (heatmapDockLayer) {
-                            heatmapDockLayer.remove();
-                            layerControl.removeLayer(heatmapDockLayer);
-                        }
-                        heatmapDockLayer = L.heatLayer(heatmapDockData, {
-                            gradient: HEATMAP_GRADIENTS.dock[idx % HEATMAP_GRADIENTS.dock.length],
-                        });
-                        layerControl.addOverlay(heatmapDockLayer, `${gbfs.systemInformation.data.system_id} dock heatmap`);
+                        gbfs.addTo(map);
                     }
                 }
             });

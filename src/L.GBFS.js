@@ -10,6 +10,7 @@ const iconUrl = new URL('./images/bike_icon.png', document.currentScript.src);
 const GBFS = Layer.extend({
   options: {
     gbfsURL: '',
+    gbfsFiles: null,
     language: null,
     start: true,
     interval: 60 * 1000,
@@ -33,6 +34,23 @@ const GBFS = Layer.extend({
 
   async start() {
     if (this.feeds) { // already started
+      return this;
+    }
+    if (this.options.gbfsFiles) {
+      this.stations = {};
+      this.feeds = {};
+      for (const f of this.options.gbfsFiles) {
+        if (f.name === 'station_information.json') {
+          this.feeds.stationInformation = f;
+        } else if (f.name === 'station_status.json') {
+          this.feeds.stationStatus = f;
+        } else if (f.name === 'system_information.json') {
+          // eslint-disable-next-line no-await-in-loop
+          const systemInfoText = await f.text();
+          this.systemInformation = JSON.parse(systemInfoText);
+        }
+      }
+      this.update();
       return this;
     }
     try {
@@ -66,7 +84,7 @@ const GBFS = Layer.extend({
       };
       this.stations = {};
 
-      if (!this.timer) {
+      if (!this.timer && this.options.interval > 0) {
         this.timer = setInterval(() => this.update(), this.options.interval);
         this.update();
       }
@@ -101,9 +119,15 @@ const GBFS = Layer.extend({
     }
     try {
       this.updating = true;
+      let stationStatus;
       let stations;
-      const stationStatusResponse = await fetch(this.feeds.stationStatus.url);
-      const stationStatus = await stationStatusResponse.json();
+      if (typeof this.feeds.stationStatus.url === 'string') {
+        const stationStatusResponse = await fetch(this.feeds.stationStatus.url);
+        stationStatus = await stationStatusResponse.json();
+      } else {
+        const stationStatusText = await this.feeds.stationStatus.text();
+        stationStatus = JSON.parse(stationStatusText);
+      }
       let freeBikeStatus;
       if (typeof this.feeds.freeBikeStatus !== 'undefined') {
         const freeBikeStatusResponse = await fetch(this.feeds.freeBikeStatus.url);
@@ -122,8 +146,13 @@ const GBFS = Layer.extend({
           let station = this.stations[status.station_id];
           if (!station) {
             /* eslint-disable no-await-in-loop */
-            const stationInformationResponse = await fetch(this.feeds.stationInformation.url);
-            stations = await stationInformationResponse.json();
+            if (typeof this.feeds.stationInformation.url === 'string') {
+              const stationInformationResponse = await fetch(this.feeds.stationInformation.url);
+              stations = await stationInformationResponse.json();
+            } else {
+              const stationInformationText = await this.feeds.stationInformation.text();
+              stations = JSON.parse(stationInformationText);
+            }
             /* eslint-enable */
             stations.data.stations.forEach((st) => {
               this.stations[st.station_id] = st;
