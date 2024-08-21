@@ -75,84 +75,27 @@
                 sortLayers: true,
             }).addTo(map);
             const historyDatas = {};
-            if (gbfsUrls.length > 0) {
-                const gbfsLayers = gbfsUrls.map((url, idx) => {
-                    let systemId;
-                    let heatmapLayer;
-                    let heatmapDockLayer;
-                    const gbfs = new L.GBFS({
-                        gbfsURL: url,
-                        stationMarkerBgColor: (idx < gbfsColors.length) ? gbfsColors[idx] : undefined,
-                    });
-                    gbfs.on('data', onDataUpdate);
-                    return gbfs;
-
-                    function onDataUpdate(data) {
-                        if (!layerControl._getLayer(L.Util.stamp(gbfs))) {
-                            if (!latlon) {
-                                map.fitBounds(gbfs.getBounds());
-                            }
-                            systemId = gbfs.systemInformation.data.system_id;
-                            layerControl.addOverlay(gbfs, systemId);
-                            gbfs.addTo(map);
-                            historyDatas[systemId] ||= {};
-                        }
-                        const timekey = data.stationStatus.last_updated;
-                        if (!historyDatas[systemId][timekey]) {
-                            // pickup minimum properties to reduce history size
-                            const ststatus = data.stationStatus.data.stations.map(x => ([
-                                x.station_id, x.num_bikes_available, x.num_docks_available,
-                            ]));
-                            let stinfo;
-                            if (data.stations) {
-                                stinfo = {};
-                                data.stations.data.stations.forEach(x => {
-                                    stinfo[x.station_id] = [x.lat, x.lon, x.name];
-                                });
-                            }
-                            historyDatas[systemId][timekey] = {
-                                status: ststatus,
-                                stations: stinfo,
-                            };
-
-                            // bike heatmap
-                            const heatmapData = ststatus.map(x => {
-                                const [id, bike, dock] = x;
-                                const st = gbfs.stations[id];
-                                return [st.lat, st.lon, bike];
-                            });
-                            if (heatmapLayer) {
-                                heatmapLayer.remove();
-                                layerControl.removeLayer(heatmapLayer);
-                            }
-                            heatmapLayer = L.heatLayer(heatmapData, {
-                                gradient: HEATMAP_GRADIENTS.bike[idx % HEATMAP_GRADIENTS.bike.length],
-                            });
-                            layerControl.addOverlay(heatmapLayer, `${gbfs.systemInformation.data.system_id} bike heatmap`);
-
-                            // dock heatmap
-                            const heatmapDockData = ststatus.map(x => {
-                                const [id, bike, dock] = x;
-                                const st = gbfs.stations[id];
-                                return [st.lat, st.lon, dock];
-                            });
-                            if (heatmapDockLayer) {
-                                heatmapDockLayer.remove();
-                                layerControl.removeLayer(heatmapDockLayer);
-                            }
-                            heatmapDockLayer = L.heatLayer(heatmapDockData, {
-                                gradient: HEATMAP_GRADIENTS.dock[idx % HEATMAP_GRADIENTS.dock.length],
-                            });
-                            layerControl.addOverlay(heatmapDockLayer, `${gbfs.systemInformation.data.system_id} dock heatmap`);
-                        }
-                    }
-                });
-            }
+            gbfsUrls.forEach(createGbfsLayer);
 
             const fileInput = document.getElementById("fileElem");
             fileElem.addEventListener("change", () => {
                 const files = Array.from(fileElem.files);
-                const gbfs = new L.GBFS({ gbfsFiles: files });
+                createGbfsLayer(files, 0);
+            });
+
+            function createGbfsLayer(urlOrFiles, idx) {
+                let systemId;
+                let heatmapLayer;
+                let heatmapDockLayer;
+                const gbfsOpts = {
+                    stationMarkerBgColor: (idx < gbfsColors.length) ? gbfsColors[idx] : undefined,
+                };
+                if (typeof urlOrFiles === 'string') {
+                    gbfsOpts.gbfsURL = urlOrFiles;
+                } else {
+                    gbfsOpts.gbfsFiles = urlOrFiles;
+                }
+                const gbfs = new L.GBFS(gbfsOpts);
                 gbfs.on('data', onDataUpdate);
                 return gbfs;
 
@@ -161,12 +104,67 @@
                         if (!latlon) {
                             map.fitBounds(gbfs.getBounds());
                         }
-                        const systemId = gbfs.systemInformation.data.system_id;
+                        systemId = gbfs.systemInformation.data.system_id;
                         layerControl.addOverlay(gbfs, systemId);
                         gbfs.addTo(map);
+                        historyDatas[systemId] ||= {};
+                    }
+                    const timekey = data.stationStatus.last_updated;
+                    if (!historyDatas[systemId][timekey]) {
+                        // pickup minimum properties to reduce history size
+                        const ststatus = data.stationStatus.data.stations.map(x => ([
+                            x.station_id, x.num_bikes_available, x.num_docks_available,
+                        ]));
+                        let stinfo;
+                        if (data.stations) {
+                            stinfo = {};
+                            data.stations.data.stations.forEach(x => {
+                                stinfo[x.station_id] = [x.lat, x.lon, x.name];
+                            });
+                        }
+                        historyDatas[systemId][timekey] = {
+                            status: ststatus,
+                            stations: stinfo,
+                        };
+
+                        // bike heatmap
+                        const heatmapData = ststatus.map(x => {
+                            const [id, bike, dock] = x;
+                            const st = gbfs.stations[id];
+                            if (st === undefined) {
+                                return undefined;
+                            }
+                            return [st.lat, st.lon, bike];
+                        }).filter(x => x);
+                        if (heatmapLayer) {
+                            heatmapLayer.remove();
+                            layerControl.removeLayer(heatmapLayer);
+                        }
+                        heatmapLayer = L.heatLayer(heatmapData, {
+                            gradient: HEATMAP_GRADIENTS.bike[idx % HEATMAP_GRADIENTS.bike.length],
+                        });
+                        layerControl.addOverlay(heatmapLayer, `${gbfs.systemInformation.data.system_id} bike heatmap`);
+
+                        // dock heatmap
+                        const heatmapDockData = ststatus.map(x => {
+                            const [id, bike, dock] = x;
+                            const st = gbfs.stations[id];
+                            if (st === undefined) {
+                                return undefined;
+                            }
+                            return [st.lat, st.lon, dock];
+                        }).filter(x => x);
+                        if (heatmapDockLayer) {
+                            heatmapDockLayer.remove();
+                            layerControl.removeLayer(heatmapDockLayer);
+                        }
+                        heatmapDockLayer = L.heatLayer(heatmapDockData, {
+                            gradient: HEATMAP_GRADIENTS.dock[idx % HEATMAP_GRADIENTS.dock.length],
+                        });
+                        layerControl.addOverlay(heatmapDockLayer, `${gbfs.systemInformation.data.system_id} dock heatmap`);
                     }
                 }
-            });
+            }
 
             function exportData() {
                 const histdata = Object.keys(historyDatas).flatMap(systemId => {
@@ -178,7 +176,7 @@
                         };
                     });
                 })
-                // FIXME: Use common ts value between systemIds
+                // FIXME: Use common ts value between systemIds for heatmap data
                 .sort((a, b) => a.ts - b.ts)
                 .map(JSON.stringify)
                 .join('\n') + '\n';
